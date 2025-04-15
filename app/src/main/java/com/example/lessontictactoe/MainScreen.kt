@@ -1,7 +1,5 @@
 package com.example.lessontictactoe
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,6 +14,10 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.random.Random
 
+// Визначення кольорів
+val SoftBlue = Color(0xFF5365A9)
+val LightPurple = Color(0xFFE6E6FA)
+
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
     var gridSize by remember { mutableStateOf(3) }
@@ -24,18 +26,18 @@ fun MainScreen(modifier: Modifier = Modifier) {
     var winner by remember { mutableStateOf<String?>(null) }
     var playerXScore by remember { mutableStateOf(0) }
     var playerOScore by remember { mutableStateOf(0) }
-    var timeRemaining by remember { mutableStateOf(5) }
+    var timeRemaining by remember { mutableStateOf(if (gridSize == 3) 5 else 10) }
     var scoreUpdated by remember { mutableStateOf(false) }
     var lastMoveMade by remember { mutableStateOf(false) }
     var isBotEnabled by remember { mutableStateOf(false) }
     var showScore by remember { mutableStateOf(false) }
 
     // Таймер
-    LaunchedEffect(currentPlayer, winner) {
+    LaunchedEffect(currentPlayer, winner, gridSize) {
         if (winner == null) {
             timeRemaining = if (gridSize == 3) 5 else 10
             lastMoveMade = false
-            while (timeRemaining > 0 && !lastMoveMade) {
+            while (timeRemaining > 0 && !lastMoveMade && winner == null) {
                 delay(1000L)
                 timeRemaining -= 1
             }
@@ -47,9 +49,21 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
     // Якщо бот увімкнений, на хід "O" він вибирає випадкову клітинку
     if (isBotEnabled && currentPlayer == "O" && winner == null) {
-        LaunchedEffect(currentPlayer) {
+        LaunchedEffect(currentPlayer, board) {
             delay(500) // Затримка для "відтворення" ходу бота
-            makeBotMove(board)
+            val nextBoard = makeBotMove(board)
+            if (nextBoard != board) {
+                board = nextBoard
+                lastMoveMade = true
+                if (checkWinner(board, "O")) {
+                    winner = "O"
+                } else if (checkDraw(board)) {
+                    winner = "Нічия"
+                } else {
+                    currentPlayer = "X"
+                    lastMoveMade = false
+                }
+            }
         }
     }
 
@@ -86,7 +100,13 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
         // Кнопка для вибору гри з ботом
         Row {
-            Button(onClick = { isBotEnabled = !isBotEnabled }) {
+            Button(
+                onClick = { isBotEnabled = !isBotEnabled },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isBotEnabled) SoftBlue else LightPurple,
+                    contentColor = Color.White
+                )
+            ) {
                 Text(if (isBotEnabled) "Грати проти людини" else "Грати з ботом")
             }
         }
@@ -131,93 +151,90 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Обгортаємо поле гри в Box для скролінгу та вирівнюємо по центру
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f) // Забезпечує, щоб поле гри займало решту місця
-                .verticalScroll(rememberScrollState()) // Додаємо вертикальний скролінг
-                .padding(16.dp), // Відступи навколо гри
+                .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            BoardGrid(board, gridSize, onClick = { row, col ->
-                if (board[row][col] == "" && winner == null) {
-                    board[row][col] = currentPlayer
-                    lastMoveMade = true
-                    if (checkWinner(board, currentPlayer)) {
-                        winner = currentPlayer
-                    } else if (checkDraw(board)) {
-                        winner = "Нічия"
-                    } else {
-                        currentPlayer = if (currentPlayer == "X") "O" else "X"
-                        lastMoveMade = false // Дозволяємо зробити хід наступному гравцю
+            // Обчислюємо бажаний розмір сітки на основі розміру клітинки
+            val cellSize = 65.dp // Зменшений розмір клітинки
+            val boardSize = (cellSize * gridSize) + (4.dp * gridSize) // Враховуємо відступи між клітинками
+
+            BoardGrid(
+                board = board,
+                gridSize = gridSize,
+                modifier = Modifier.size(boardSize), // Задаємо явний розмір для BoardGrid
+                onClick = { row, col ->
+                    if (board[row][col] == "" && winner == null) {
+                        val updatedBoard = board.map { it.toMutableList() }.toMutableList()
+                        updatedBoard[row][col] = currentPlayer
+                        board = updatedBoard
+                        lastMoveMade = true
+                        if (checkWinner(board, currentPlayer)) {
+                            winner = currentPlayer
+                        } else if (checkDraw(board)) {
+                            winner = "Нічия"
+                        } else {
+                            currentPlayer = if (currentPlayer == "X") "O" else "X"
+                            lastMoveMade = false
+                        }
                     }
                 }
-            })
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Використовуємо Column для вертикального вирівнювання кнопок
-        Column(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp) // Відстань між кнопками
+            horizontalArrangement = Arrangement.SpaceAround // Розміщуємо кнопки по центру з відступами
         ) {
-            Button(onClick = {
-                board = List(gridSize) { MutableList(gridSize) { "" } }
-                winner = null
-                timeRemaining = if (gridSize == 3) 5 else 10
-                scoreUpdated = false
-                lastMoveMade = false
-            }) {
-                Text("Скинути раунд")
+            Button(
+                onClick = {
+                    board = List(gridSize) { MutableList(gridSize) { "" } }
+                    winner = null
+                    timeRemaining = if (gridSize == 3) 5 else 10
+                    scoreUpdated = false
+                    lastMoveMade = false
+                },
+                modifier = Modifier.weight(1f) // Розділяємо доступний простір між кнопками
+            ) {
+                Text("Скинути")
             }
 
-            Button(onClick = {
-                gridSize = 3
-                board = List(3) { MutableList(3) { "" } }
-                currentPlayer = "X"
-                winner = null
-                playerXScore = 0
-                playerOScore = 0
-                timeRemaining = 5
-                scoreUpdated = false
-                lastMoveMade = false
-            }) {
+            Button(
+                onClick = {
+                    gridSize = 3
+                    board = List(3) { MutableList(3) { "" } }
+                    currentPlayer = "X"
+                    winner = null
+                    playerXScore = 0
+                    playerOScore = 0
+                    timeRemaining = 5
+                    scoreUpdated = false
+                    lastMoveMade = false
+                },
+                modifier = Modifier.weight(1f)
+            ) {
                 Text("Нова гра")
             }
 
-            Button(onClick = {
-                showScore = !showScore // Перемикач для показу рахунку
-            }) {
-                Text("Показати рахунок")
+            Button(
+                onClick = {
+                    showScore = !showScore
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(if (showScore) "Приховати" else "Рахунок")
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Показуємо рахунок, якщо showScore == true
         if (showScore) {
             Text("Рахунок - X: $playerXScore, O: $playerOScore", fontSize = 20.sp)
         }
-    }
-}
-
-// Функція для виконання ходу бота
-fun makeBotMove(board: List<MutableList<String>>) {
-    val emptyCells = mutableListOf<Pair<Int, Int>>()
-    for (i in board.indices) {
-        for (j in board[i].indices) {
-            if (board[i][j].isEmpty()) {
-                emptyCells.add(Pair(i, j))
-            }
-        }
-    }
-
-    if (emptyCells.isNotEmpty()) {
-        val move = emptyCells[Random.nextInt(emptyCells.size)]
-        board[move.first][move.second] = "O"
     }
 }
 
@@ -225,54 +242,71 @@ fun makeBotMove(board: List<MutableList<String>>) {
 fun BoardGrid(
     board: List<List<String>>,
     gridSize: Int,
+    modifier: Modifier = Modifier, // Додаємо модифікатор для BoardGrid
     onClick: (Int, Int) -> Unit
 ) {
-    val cellSize = when (gridSize) {
-        3 -> 80.dp // Для 3x3 клітинки залишаються великими
-        4 -> 60.dp // Для 4x4 клітинки зменшуються
-        5 -> 50.dp // Для 5x5 клітинки ще менші
-        else -> 80.dp
-    }
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    Column(modifier = modifier) {
         for (i in 0 until gridSize) {
-            Row(
-                horizontalArrangement = Arrangement.Center
-            ) {
+            Row {
                 for (j in 0 until gridSize) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(cellSize)
-                            .padding(4.dp)
-                            .background(Color.LightGray)
-                            .clickable { onClick(i, j) }
-                    ) {
-                        Text(text = board[i][j], fontSize = 32.sp)
-                    }
+                    Cell(value = board[i][j], onClick = { onClick(i, j) })
                 }
             }
         }
     }
 }
 
-// Функція для перевірки нічії
+@Composable
+fun Cell(value: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .size(65.dp) // Зменшений розмір клітинки
+            .padding(4.dp),
+        enabled = value.isEmpty(),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.LightGray,
+            contentColor = Color.Black
+        )
+    ) {
+        Text(text = value, fontSize = 24.sp, fontWeight = FontWeight.Bold) // Зменшений розмір тексту
+    }
+}
+
+fun checkWinner(board: List<List<String>>, player: String): Boolean {
+    val n = board.size
+    // Check rows
+    for (i in 0 until n) {
+        if (board[i].all { it == player }) return true
+    }
+    // Check columns
+    for (j in 0 until n) {
+        if ((0 until n).all { board[it][j] == player }) return true
+    }
+    // Check diagonals
+    if ((0 until n).all { board[it][it] == player }) return true
+    if ((0 until n).all { board[it][n - 1 - it] == player }) return true
+    return false
+}
+
 fun checkDraw(board: List<List<String>>): Boolean {
     return board.all { row -> row.all { it.isNotEmpty() } }
 }
 
-fun checkWinner(board: List<List<String>>, player: String): Boolean {
-    val size = board.size
-
-    for (i in 0 until size) {
-        if ((0 until size).all { board[i][it] == player }) return true
-        if ((0 until size).all { board[it][i] == player }) return true
+fun makeBotMove(board: List<List<String>>): List<MutableList<String>> {
+    val n = board.size
+    val availableCells = mutableListOf<Pair<Int, Int>>()
+    for (i in 0 until n) {
+        for (j in 0 until n) {
+            if (board[i][j] == "") {
+                availableCells.add(Pair(i, j))
+            }
+        }
     }
-
-    if ((0 until size).all { board[it][it] == player }) return true
-    if ((0 until size).all { board[it][size - 1 - it] == player }) return true
-
-    return false
+    if (availableCells.isNotEmpty()) {
+        val randomIndex = Random.nextInt(availableCells.size)
+        val (row, col) = availableCells[randomIndex]
+        return board.map { it.toMutableList() }.toMutableList().apply { this[row][col] = "O" }
+    }
+    return board.map { it.toMutableList() }.toMutableList()
 }
